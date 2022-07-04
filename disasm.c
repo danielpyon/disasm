@@ -34,6 +34,7 @@ void close_file(file* f) {
 typedef struct section_struct {
     int name;                    // offset to section name
     int offset;                  // offset to code
+    int executable;              // PROGBITS
     struct section_struct* next; // next section
 } section;
 
@@ -63,10 +64,11 @@ section* get_section(elf* e, char* name) {
     return NULL;
 }
 
-section* make_section(int name, int offset) {
+section* make_section(int name, int offset, int executable) {
     section* s = malloc(sizeof(section));
     s->name = name;
     s->offset = offset;
+    s->executable = executable;
     s->next = NULL;
     return s;
 }
@@ -88,7 +90,10 @@ elf* make_elf(file* f) {
 
     int name = *(int*)curr;
     long offset = *(long*)(curr + 0x18);
-    e->sections = make_section(name, offset);
+    // check progbits and sh_flags
+    int executable = (*(int*)(curr + 0x4) == 0x1) && (*(long*)(curr + 0x8) & 0x4);
+    
+    e->sections = make_section(name, offset, executable);
     section* node = e->sections;
 
     for(int i = 0; i < e->section_count - 1; i++) {
@@ -100,8 +105,9 @@ elf* make_elf(file* f) {
 
         name = *(int*)curr; // first 4 bytes represent name offset
         offset = *(long*)(curr + 0x18); // offset to code
+        executable = (*(int*)(curr + 0x4) == 0x1) && (*(long*)(curr + 0x8) & 0x4);
 
-        node->next = make_section(name, offset);
+        node->next = make_section(name, offset, executable);
         node = node->next;
     }
 
@@ -141,26 +147,37 @@ void print_section(elf* e, section* s) {
     printf("- Offset: %20d bytes\n", s->offset);
 }
 
+void disasm(char* file_name, int output_fd) {
+    // do a linear pass through sections
+    // disassemble those first (disassemble each section until invalid opcode)
+    // look up symbols and strings
+
+    // then break up sections into functions with .symtab
+
+    int fd = open(file_name, O_RDONLY);
+    file* f = read_file(fd);
+    elf* e = make_elf(f);
+    
+    // print all executable sections
+    for (section* curr = e->sections; curr != NULL; curr = curr->next) {
+        if (curr->executable) {
+            print_section(e, curr);
+        }
+    }
+
+    write(output_fd, "hello world\n", sizeof("hello world\n"));
+
+    free_elf(e);
+    close_file(f);
+}
+
 int main(int argc, char** argv) {
     if (argc != 2) {
         printf("Usage: <ELF file>\n");
         exit(1);
     }
     
-    int fd = open(argv[1], O_RDONLY);
-    
-    file* f = read_file(fd);
-    elf* e = make_elf(f);
+    disasm(argv[1], 0);
 
-    print_elf(e);
-
-    section* curr = e->sections;
-    for (; curr != NULL; curr = curr->next) {
-        print_section(e, curr);
-    }
-
-    free_elf(e);
-    close_file(f);
-
-    return 0;
+    exit(0);
 }
