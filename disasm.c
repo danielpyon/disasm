@@ -7,6 +7,28 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 
+// points to start of section header
+#define E_SHOFF 0x28
+// index of section header entry with section names
+#define E_SHSTRNDX 0x3e
+// contains size of a section header entry
+#define E_SHENTSIZE 0x3a
+// contains number of entries in section header table
+#define E_SHNUM 0x3c
+
+// offset of section
+#define SH_OFFSET 0x18
+// type of header
+#define SH_TYPE 0x4
+// program data
+#define SHT_PROGBITS 0x1 
+// attributes of the section
+#define SH_FLAGS 0x8
+// executable section
+#define SHF_EXECINSTR 0x4
+// size of section in bytes
+#define SH_SIZE 0x20
+
 off_t file_size_bytes(int fd) {
     return lseek(fd, 0, SEEK_END);
 }
@@ -79,22 +101,23 @@ elf* make_elf(file* f) {
     // initialize elf struct from raw bytes
     elf* e = malloc(sizeof(elf));
 
+    // set start pointer to the beginning of the file
     e->start = f->contents;
     
-    e->section_offset = *(long*)(e->start + 0x28);
-    short strndx = *(short*)(e->start + 0x3e);
+    e->section_offset = *(long*) (e->start + E_SHOFF);
+    short strndx      = *(short*)(e->start + E_SHSTRNDX);
     
-    e->section_entry_size = *(short*)(e->start + 0x3a);
-    e->section_count = *(short*)(e->start + 0x3c);
+    e->section_entry_size = *(short*)(e->start + E_SHENTSIZE);
+    e->section_count      = *(short*)(e->start + E_SHNUM);
 
     // initialize all sections
     char* curr = e->start + e->section_offset;
 
-    int name = *(int*)curr;
-    long offset = *(long*)(curr + 0x18);
-    // check progbits and sh_flags
-    int executable = (*(int*)(curr + 0x4) == 0x1) && (*(long*)(curr + 0x8) & 0x4);
-    long size = *(long*)(curr + 0x20);
+    int name    = *(int*)  curr;
+    long offset = *(long*)(curr + SH_OFFSET);
+    int executable = *(int*)(curr + SH_TYPE) == SHT_PROGBITS
+        && *(long*)(curr + SH_FLAGS) & SHF_EXECINSTR;
+    long size = *(long*)(curr + SH_SIZE);
     
     e->sections = make_section(name, offset, executable, size);
     section* node = e->sections;
@@ -106,10 +129,11 @@ elf* make_elf(file* f) {
         if (i == strndx - 1)
             e->symbol_offset = *(long*)(curr + 0x18); // sh_offset
 
-        name = *(int*)curr; // first 4 bytes represent name offset
-        offset = *(long*)(curr + 0x18); // offset to code
-        executable = (*(int*)(curr + 0x4) == 0x1) && (*(long*)(curr + 0x8) & 0x4);
-        size = *(long*)(curr + 0x20);
+        name    = *(int*)  curr;
+        offset = *(long*)(curr + SH_OFFSET);
+        executable = *(int*)(curr + SH_TYPE) == SHT_PROGBITS
+            && *(long*)(curr + SH_FLAGS) & SHF_EXECINSTR;
+        size = *(long*)(curr + SH_SIZE);
 
         node->next = make_section(name, offset, executable, size);
         node = node->next;
