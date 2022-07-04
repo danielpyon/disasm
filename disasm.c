@@ -10,20 +10,30 @@ off_t file_size_bytes(int fd) {
     return lseek(fd, 0, SEEK_END);
 }
 
-char* read_file(int fd) {
-    off_t nb = file_size_bytes(fd);
-    return (char*)mmap(NULL, nb, PROT_READ, MAP_PRIVATE, fd, 0);
-}
-
-void close_file(char* file) {
-    off_t nb = file_size_bytes(fd);
-    munmap(file, nb);
-}
-
+// represents a file
 typedef struct {
-    int name;      // offset to section name
-    int offset     // offset to code
-    section* next; // next section
+    int size_bytes;
+    char* contents;
+} file;
+
+file* read_file(int fd) {
+    // read from fd into file struct
+    file* f = malloc(sizeof(file));
+    f->size_bytes = file_size_bytes(fd);
+    f->contents = (char*)mmap(NULL, f->size_bytes, PROT_READ, MAP_PRIVATE, fd, 0);
+
+    return f;
+}
+
+void close_file(file* f) {
+    munmap(f, f->size_bytes);
+    free(f);
+}
+
+typedef struct section_struct {
+    int name;                    // offset to section name
+    int offset;                  // offset to code
+    struct section_struct* next; // next section
 } section;
 
 typedef struct {
@@ -50,17 +60,17 @@ section* make_section(int name, int offset) {
     return s;
 }
 
-elf* make_elf(char* file) {
+elf* make_elf(file* f) {
     // initialize elf struct from raw bytes
     elf* e = malloc(sizeof(elf));
 
-    e->start = file;
+    e->start = f->contents;
     
-    e->section_offset = *(long*)(file + 0x28);
-    e->symbol_offset = *(short*)(file + 0x3e);
+    e->section_offset = *(long*)(e->start + 0x28);
+    e->symbol_offset = *(short*)(e->start + 0x3e);
     
-    e->section_entry_size = *(short*)(file + 0x3a);
-    e->section_count = *(short*)(file + 0x3c);
+    e->section_entry_size = *(short*)(e->start + 0x3a);
+    e->section_count = *(short*)(e->start + 0x3c);
 
     // initialize all sections
     char* curr = e->start + e->section_offset;
@@ -73,8 +83,8 @@ elf* make_elf(char* file) {
     for(int i = 0; i < e->section_count - 1; i++) {
         curr += e->section_entry_size;
 
-        name = *(int*)curr // first 4 bytes represent name offset
-        offset = *(long*)(curr + 0x18) // offset to code
+        name = *(int*)curr; // first 4 bytes represent name offset
+        offset = *(long*)(curr + 0x18); // offset to code
 
         node->next = make_section(name, offset);
         node = node->next;
@@ -84,7 +94,15 @@ elf* make_elf(char* file) {
 }
 
 void free_elf(elf* e) {
-    
+    section* prev = NULL;
+    section* curr;
+
+    for (curr = e->sections; curr != NULL; curr = curr->next) {
+        free(prev);
+        prev = curr;
+    }
+    free(prev);
+
     free(e);
 }
 
@@ -94,15 +112,16 @@ int main(int argc, char** argv) {
         exit(1);
     }
     
-    char* elf = read_file(open(argv[1], O_RDONLY));
+    int fd = open(argv[1], O_RDONLY);
+    
+    file* f = read_file(fd);
+    elf* e = make_elf(f);
 
+    printf("number of section header table entries : %d\n", e->section_count); // 16
+    printf("offset to section header table: %ld\n", e->section_offset);
 
-    char* section_text = get_section(elf + shoff, ".text", e_shentsize, e_shnum);
-
-    printf("number of section header table entries : %d\n", e_shnum);
-    printf("offset to section header table: %ld\n", e_shoff);
-
-    close_file(elf);
+    free_elf(e);
+    close_file(f);
 
     return 0;
 }
