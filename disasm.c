@@ -102,8 +102,20 @@ void free_elf(elf* e) {
         prev = curr;
     }
     free(prev);
-
     free(e);
+}
+
+void print_elf(elf* e) {
+    int width = 20;
+    printf("ELF information:\n");
+
+    printf("- ELF header start:      %20p (address)\n", e->start);
+
+    printf("- Section Header Offset: %20ld bytes\n", e->section_offset);
+    printf("- .shstrtab Offset:      %20d bytes\n", e->symbol_offset);
+
+    printf("- Section Entry Size:    %20d bytes\n", e->section_entry_size);
+    printf("- Section Entry Count:   %20d items\n", e->section_count);
 }
 
 int main(int argc, char** argv) {
@@ -117,8 +129,7 @@ int main(int argc, char** argv) {
     file* f = read_file(fd);
     elf* e = make_elf(f);
 
-    printf("number of section header table entries : %d\n", e->section_count); // 16
-    printf("offset to section header table: %ld\n", e->section_offset);
+    print_elf(e);
 
     free_elf(e);
     close_file(f);
