@@ -34,7 +34,8 @@ void close_file(file* f) {
 typedef struct section_struct {
     int name;                    // offset to section name
     int offset;                  // offset to code
-    int executable;              // PROGBITS
+    int executable;
+    long size;                   // size of section in bytes
     struct section_struct* next; // next section
 } section;
 
@@ -64,11 +65,12 @@ section* get_section(elf* e, char* name) {
     return NULL;
 }
 
-section* make_section(int name, int offset, int executable) {
+section* make_section(int name, int offset, int executable, long size) {
     section* s = malloc(sizeof(section));
     s->name = name;
     s->offset = offset;
     s->executable = executable;
+    s->size = size;
     s->next = NULL;
     return s;
 }
@@ -92,8 +94,9 @@ elf* make_elf(file* f) {
     long offset = *(long*)(curr + 0x18);
     // check progbits and sh_flags
     int executable = (*(int*)(curr + 0x4) == 0x1) && (*(long*)(curr + 0x8) & 0x4);
+    long size = *(long*)(curr + 0x20);
     
-    e->sections = make_section(name, offset, executable);
+    e->sections = make_section(name, offset, executable, size);
     section* node = e->sections;
 
     for(int i = 0; i < e->section_count - 1; i++) {
@@ -106,8 +109,9 @@ elf* make_elf(file* f) {
         name = *(int*)curr; // first 4 bytes represent name offset
         offset = *(long*)(curr + 0x18); // offset to code
         executable = (*(int*)(curr + 0x4) == 0x1) && (*(long*)(curr + 0x8) & 0x4);
+        size = *(long*)(curr + 0x20);
 
-        node->next = make_section(name, offset, executable);
+        node->next = make_section(name, offset, executable, size);
         node = node->next;
     }
 
@@ -145,6 +149,7 @@ void print_section(elf* e, section* s) {
 
     printf("- Name:   %20s\n", get_section_name(e, s));
     printf("- Offset: %20d bytes\n", s->offset);
+    printf("- Size:   %20ld bytes\n", s->size);
 }
 
 void disasm(char* file_name, int output_fd) {
@@ -158,7 +163,7 @@ void disasm(char* file_name, int output_fd) {
     file* f = read_file(fd);
     elf* e = make_elf(f);
     
-    // print all executable sections
+    // iterate all executable sections
     for (section* curr = e->sections; curr != NULL; curr = curr->next) {
         if (curr->executable) {
             print_section(e, curr);
