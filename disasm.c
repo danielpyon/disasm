@@ -127,7 +127,7 @@ elf* make_elf(file* f) {
 
         // set symbol offset
         if (i == strndx - 1)
-            e->symbol_offset = *(long*)(curr + 0x18); // sh_offset
+            e->symbol_offset = *(long*)(curr + SH_OFFSET);
 
         name    = *(int*)  curr;
         offset = *(long*)(curr + SH_OFFSET);
