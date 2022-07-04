@@ -1,10 +1,11 @@
 #include <stdio.h>
-#include <sys/types.h>
-#include <sys/stat.h>
+#include <string.h>
 #include <fcntl.h>
 #include <stdlib.h>
 #include <unistd.h>
 #include <sys/mman.h>
+#include <sys/types.h>
+#include <sys/stat.h>
 
 off_t file_size_bytes(int fd) {
     return lseek(fd, 0, SEEK_END);
@@ -40,7 +41,7 @@ typedef struct {
     char* start;              // pointer to ELF header
     
     long  section_offset;     // section header offset
-    short symbol_offset;      // .shstrtab offset
+    long  symbol_offset;      // .shstrtab offset
 
     short section_entry_size; // section header entry size
     short section_count;      // # of section headers
@@ -49,6 +50,16 @@ typedef struct {
 } elf;
 
 char* get_section_name(elf* e, section* s) {
+    int offset = s->name;
+    char* name = e->start + e->symbol_offset + offset;
+    return name;
+}
+
+section* get_section(elf* e, char* name) {
+    section* curr;
+    for (curr = e->sections; curr != NULL; curr = curr->next)
+        if (!strcmp(get_section_name(e, curr), name))
+            return curr;
     return NULL;
 }
 
@@ -67,7 +78,7 @@ elf* make_elf(file* f) {
     e->start = f->contents;
     
     e->section_offset = *(long*)(e->start + 0x28);
-    e->symbol_offset = *(short*)(e->start + 0x3e);
+    short strndx = *(short*)(e->start + 0x3e);
     
     e->section_entry_size = *(short*)(e->start + 0x3a);
     e->section_count = *(short*)(e->start + 0x3c);
@@ -82,6 +93,10 @@ elf* make_elf(file* f) {
 
     for(int i = 0; i < e->section_count - 1; i++) {
         curr += e->section_entry_size;
+
+        // set symbol offset
+        if (i == strndx - 1)
+            e->symbol_offset = *(long*)(curr + 0x18); // sh_offset
 
         name = *(int*)curr; // first 4 bytes represent name offset
         offset = *(long*)(curr + 0x18); // offset to code
@@ -112,10 +127,18 @@ void print_elf(elf* e) {
     printf("- ELF header start:      %20p (address)\n", e->start);
 
     printf("- Section Header Offset: %20ld bytes\n", e->section_offset);
-    printf("- .shstrtab Offset:      %20d bytes\n", e->symbol_offset);
+    printf("- .shstrtab Offset:      %20ld bytes\n", e->symbol_offset);
 
     printf("- Section Entry Size:    %20d bytes\n", e->section_entry_size);
     printf("- Section Entry Count:   %20d items\n", e->section_count);
+}
+
+void print_section(elf* e, section* s) {
+    int width = 20;
+    printf("Section information:\n");
+
+    printf("- Name:   %20s\n", get_section_name(e, s));
+    printf("- Offset: %20d bytes\n", s->offset);
 }
 
 int main(int argc, char** argv) {
@@ -130,6 +153,11 @@ int main(int argc, char** argv) {
     elf* e = make_elf(f);
 
     print_elf(e);
+
+    section* curr = e->sections;
+    for (; curr != NULL; curr = curr->next) {
+        print_section(e, curr);
+    }
 
     free_elf(e);
     close_file(f);
