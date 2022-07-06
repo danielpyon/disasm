@@ -29,6 +29,8 @@
 // size of section in bytes
 #define SH_SIZE 0x20
 
+#define MAX_INSTRUCTION_LENGTH 15
+
 off_t file_size_bytes(int fd) {
     return lseek(fd, 0, SEEK_END);
 }
@@ -53,12 +55,12 @@ void close_file(file* f) {
     free(f);
 }
 
-typedef struct section_struct {
+typedef struct section {
     int name;                    // offset to section name
     int offset;                  // offset to code
     int executable;
     long size;                   // size of section in bytes
-    struct section_struct* next; // next section
+    struct section* next; // next section
 } section;
 
 typedef struct {
@@ -85,6 +87,10 @@ section* get_section(elf* e, char* name) {
         if (!strcmp(get_section_name(e, curr), name))
             return curr;
     return NULL;
+}
+
+char* get_section_code(elf* e, section* s) {
+    return e->start + s->offset;
 }
 
 section* make_section(int name, int offset, int executable, long size) {
@@ -176,25 +182,50 @@ void print_section(elf* e, section* s) {
     printf("- Size:   %20ld bytes\n", s->size);
 }
 
-void disasm(char* file_name, int output_fd) {
+// returns the number of bytes in the instruction
+int disassemble_x86(char* code, int ip, int output_fd) {
+    char inst[MAX_INSTRUCTION_LENGTH];
+    memcpy(inst, code + ip, sizeof(inst));
+
+    // todo: remove this
+    for (int i = 0; i < 15; i++)
+        dprintf(output_fd, "%hhx ", inst[i]);
+    dprintf(output_fd, "\n");
+    
+    return 1;
+}
+
+void disasm(int input_fd, int output_fd) {
     // do a linear pass through sections
     // disassemble those first (disassemble each section until invalid opcode)
     // look up symbols and strings
 
     // then break up sections into functions with .symtab
 
-    int fd = open(file_name, O_RDONLY);
-    file* f = read_file(fd);
+    file* f = read_file(input_fd);
     elf* e = make_elf(f);
     
     // iterate all executable sections
     for (section* curr = e->sections; curr != NULL; curr = curr->next) {
         if (curr->executable) {
-            print_section(e, curr);
+            char* code = get_section_code(e, curr);
+            long len = curr->size;
+
+            dprintf(output_fd, "Disassembly of section <%s>:\n", get_section_name(e, curr));
+
+            // todo: remove this
+            int ip = 0;
+            disassemble_x86(code, ip, output_fd);
+
+            // todo: uncomment this
+            /*
+            int ip = 0;
+            while(ip < len) {
+                ip += disassemble_x86(code, ip, output_fd);
+            }
+            */
         }
     }
-
-    write(output_fd, "hello world\n", sizeof("hello world\n"));
 
     free_elf(e);
     close_file(f);
@@ -206,7 +237,8 @@ int main(int argc, char** argv) {
         exit(1);
     }
     
-    disasm(argv[1], 0);
+    int input_fd = open(argv[1], O_RDONLY);
+    disasm(input_fd, 0);
 
     exit(0);
 }
