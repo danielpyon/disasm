@@ -182,17 +182,65 @@ void print_section(elf* e, section* s) {
     printf("- Size:   %20ld bytes\n", s->size);
 }
 
+char* g_prefix_table[256];
+#define P_LOCK 0xf0
+#define P_REPNE_REPNZ 0xf2
+#define P_REP_REPE_REPZ 0xf3
+#define P_CS 0x2e
+#define P_SS 0x36
+#define P_DS 0x3e
+#define P_ES 0x26
+#define P_FS 0x64
+#define P_GS 0x65
+#define P_BRANCH_NOT_TAKEN 0x2e
+#define P_BRANCH_TAKEN 0x3e
+#define P_DEFAULT_OPERAND_SIZE_OVERRIDE 0x66
+#define P_DEFAULT_ADDRESS_SIZE_OVERRIDE 0x67
+
+#define REX(x) !((x >> 4) ^ 0b0100)
+
+void init_prefix_table() {
+    memset(g_prefix_table, 0, sizeof(g_prefix_table));
+    g_prefix_table[P_LOCK] = "lock";
+    g_prefix_table[P_REPNE_REPNZ] = "repne/repnz";
+    g_prefix_table[P_REP_REPE_REPZ] = "rep/repe/repz";
+    g_prefix_table[P_CS] = "";
+    g_prefix_table[P_SS] = "";
+    g_prefix_table[P_DS] = "";
+    g_prefix_table[P_ES] = "";
+    g_prefix_table[P_FS] = "";
+    g_prefix_table[P_GS] = "";
+    g_prefix_table[P_BRANCH_NOT_TAKEN] = "";
+    g_prefix_table[P_BRANCH_TAKEN] = "";
+    g_prefix_table[P_DEFAULT_OPERAND_SIZE_OVERRIDE] = "";
+    g_prefix_table[P_DEFAULT_ADDRESS_SIZE_OVERRIDE] = "";
+}
+
 // returns the number of bytes in the instruction
 int disassemble_x86(char* code, int ip, int output_fd) {
     char inst[MAX_INSTRUCTION_LENGTH];
     memcpy(inst, code + ip, sizeof(inst));
 
-    // todo: remove this
-    for (int i = 0; i < 15; i++)
-        dprintf(output_fd, "%hhx ", inst[i]);
-    dprintf(output_fd, "\n");
+    int sz = 0;
     
-    return 1;
+    // check the prefix bytes
+    char* prefix = g_prefix_table[inst[sz]];
+    if (prefix) {
+        dprintf(output_fd, "%s", prefix);
+        sz++;
+    }
+
+    for (int i = 0; i < 15; i++)
+        dprintf(output_fd, " %hhx ", inst[i]);
+
+    char rex = inst[sz];
+    if (REX(rex)) {
+
+        sz++;
+    }
+
+    write(output_fd, "\n", sizeof("\n"));
+    return sz;
 }
 
 void disasm(int input_fd, int output_fd) {
@@ -237,6 +285,8 @@ int main(int argc, char** argv) {
         exit(1);
     }
     
+    init_prefix_table();
+
     int input_fd = open(argv[1], O_RDONLY);
     disasm(input_fd, 0);
 
