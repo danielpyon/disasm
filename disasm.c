@@ -198,6 +198,10 @@ char* g_prefix_table[256];
 #define P_DEFAULT_ADDRESS_SIZE_OVERRIDE 0x67
 
 #define REX(x) !((x >> 4) ^ 0b0100)
+#define REX_W 0b100 
+#define REX_R 0b100
+#define REX_X 0b10
+#define REX_B 0b1
 
 void init_prefix_table() {
     memset(g_prefix_table, 0, sizeof(g_prefix_table));
@@ -216,6 +220,11 @@ void init_prefix_table() {
     g_prefix_table[P_DEFAULT_ADDRESS_SIZE_OVERRIDE] = "";
 }
 
+char* g_opcode_table[256];
+void init_opcode_table() {
+    memset(g_opcode_table, 0, sizeof(g_opcode_table));
+}
+
 // returns the number of bytes in the instruction
 int disassemble_x86(char* code, int ip, int output_fd) {
     char inst[MAX_INSTRUCTION_LENGTH];
@@ -224,20 +233,23 @@ int disassemble_x86(char* code, int ip, int output_fd) {
     int sz = 0;
     
     // check the prefix bytes
-    char* prefix = g_prefix_table[inst[sz]];
-    if (prefix) {
-        dprintf(output_fd, "%s", prefix);
-        sz++;
+    char* prefix = g_prefix_table[inst[sz++]];
+    while (prefix) {
+        prefix = g_prefix_table[inst[sz++]];
+        dprintf(output_fd, "%s ", prefix);
     }
 
     for (int i = 0; i < 15; i++)
         dprintf(output_fd, " %hhx ", inst[i]);
 
     char rex = inst[sz];
-    if (REX(rex)) {
-
+    if (REX(rex))
         sz++;
-    }
+    
+    // opcode
+    for (int i = 0; i < 4; i++)
+        dprintf(output_fd, " %hhx ", inst[sz + i]);
+    
 
     write(output_fd, "\n", sizeof("\n"));
     return sz;
@@ -261,17 +273,15 @@ void disasm(int input_fd, int output_fd) {
 
             dprintf(output_fd, "Disassembly of section <%s>:\n", get_section_name(e, curr));
 
-            // todo: remove this
-            int ip = 0;
-            disassemble_x86(code, ip, output_fd);
+            if (strcmp(get_section_name(e, curr), ".text"))
+                continue;
 
-            // todo: uncomment this
-            /*
             int ip = 0;
             while(ip < len) {
                 ip += disassemble_x86(code, ip, output_fd);
             }
-            */
+
+            break;
         }
     }
 
