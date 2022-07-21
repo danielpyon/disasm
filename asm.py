@@ -26,11 +26,11 @@ def write_json(fname, contents):
 
 def serve_asm():
     while True:
-        op = input()
+        op = input().upper()
         if op not in x86:
             print('invalid opcode')
         else:
-            print(x86[op])
+            print(find(op))
 
 def fmt_x86():
     x86 = load_json('x86_64.json')
@@ -56,11 +56,23 @@ def fmt_x86():
 #        - save to file
 # 2) register decoding
 
+# INPUT:
+# [1 byte] prefix(es) (optional)
+# [1 byte] REX (optional)
+# [1 byte] opcode (required)
+# [1 byte] modRM (optional)
+# [1 byte] immediate (optional)
+# [1 byte] displacement (optional)
+
+
+# OUTPUT:
+# name of operation
+# argument 1..N decoded
+
 @timer
 def find(opcode):
     return x86[opcode]
 
 x86 = load_json('x86_64_fmt.json')
 serve_asm()
-
 
