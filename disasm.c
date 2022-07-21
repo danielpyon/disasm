@@ -203,6 +203,8 @@ char* g_prefix_table[256];
 #define REX_X 0b10
 #define REX_B 0b1
 
+const char endbr64[4] = { 0xf3, 0x0f, 0x1e, 0xfa };
+
 void init_prefix_table() {
     memset(g_prefix_table, 0, sizeof(g_prefix_table));
     g_prefix_table[P_LOCK] = "lock";
@@ -220,11 +222,6 @@ void init_prefix_table() {
     g_prefix_table[P_DEFAULT_ADDRESS_SIZE_OVERRIDE] = "";
 }
 
-char* g_opcode_table[256];
-void init_opcode_table() {
-    memset(g_opcode_table, 0, sizeof(g_opcode_table));
-}
-
 // returns the number of bytes in the instruction
 int disassemble_x86(char* code, int ip, int output_fd) {
     char inst[MAX_INSTRUCTION_LENGTH];
@@ -232,26 +229,36 @@ int disassemble_x86(char* code, int ip, int output_fd) {
 
     int sz = 0;
     
-    // check the prefix bytes
-    char* prefix = g_prefix_table[inst[sz++]];
-    while (prefix) {
-        prefix = g_prefix_table[inst[sz++]];
-        dprintf(output_fd, "%s ", prefix);
-    }
+    if (!strncmp(inst, endbr64, sizeof(endbr64)))
+        return sizeof(endbr64);
 
-    for (int i = 0; i < 15; i++)
-        dprintf(output_fd, " %hhx ", inst[i]);
+    // check the prefix bytes
+    if (g_prefix_table[inst[sz]]) {
+        char* prefix = g_prefix_table[inst[sz++]];
+        while (prefix) {
+            prefix = g_prefix_table[inst[sz++]];
+            dprintf(output_fd, "%s ", prefix);
+        }
+    }
 
     char rex = inst[sz];
     if (REX(rex))
         sz++;
     
     // opcode
-    for (int i = 0; i < 4; i++)
-        dprintf(output_fd, " %hhx ", inst[sz + i]);
+    char opcode;
+    if (inst[sz] == 0x0f) {
+        sz++;
+        if (inst[sz] == 0x38 || inst[sz] == 0x3a)
+            sz++;
+    }
+    opcode = inst[sz++];
+
+    dprintf(output_fd, "opcode: %hhx ", inst[sz]);
+    write(output_fd, "\n", sizeof("\n"));
+
     
 
-    write(output_fd, "\n", sizeof("\n"));
     return sz;
 }
 
@@ -261,7 +268,6 @@ void disasm(int input_fd, int output_fd) {
     // look up symbols and strings
 
     // then break up sections into functions with .symtab
-
     file* f = read_file(input_fd);
     elf* e = make_elf(f);
     
@@ -276,10 +282,14 @@ void disasm(int input_fd, int output_fd) {
             if (strcmp(get_section_name(e, curr), ".text"))
                 continue;
 
+            disassemble_x86(code, 4, output_fd);
+
+            /*
             int ip = 0;
             while(ip < len) {
                 ip += disassemble_x86(code, ip, output_fd);
             }
+            */
 
             break;
         }

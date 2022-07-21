@@ -1,3 +1,5 @@
+#!/usr/bin/python3
+
 import json
 import functools
 import time
@@ -13,22 +15,26 @@ def timer(func):
         return value
     return wrapper_timer
 
-def load():
-    with open('x86_64.json') as f:
-        x86 = json.loads(f.read())
-    return x86
+def load_json(fname):
+    with open(fname, 'r') as f:
+        contents = json.loads(f.read())
+    return contents
+
+def write_json(fname, contents):
+    with open(fname, 'w') as f:
+        f.write(contents)
 
 def serve_asm():
     while True:
         op = input()
-        if op not in opcode_to_encodings:
+        if op not in x86:
             print('invalid opcode')
         else:
-            print(opcode_to_encodings[op])
+            print(x86[op])
 
-def xform_json():
-    with open('x86_64.json', 'r') as f:
-        x86 = json.loads(f.read())
+def fmt_x86():
+    x86 = load_json('x86_64.json')
+
     instructions = x86['instructions']
 
     opcode_to_encodings = dict()
@@ -44,8 +50,7 @@ def xform_json():
                     opcode_to_encodings[opcode] = list()
                 opcode_to_encodings[opcode].append(enc)
 
-    with open('x86_64_fmt.json', 'w') as f:
-        f.write(json.dumps(opcode_to_encodings))
+    write_json('x86_64_fmt.json', json.dumps(opcode_to_encodings))
 
 # 1) invert json: opcode -> encodings + instruction name
 #        - save to file
@@ -53,10 +58,9 @@ def xform_json():
 
 @timer
 def find(opcode):
-    print(x86['instructions']['MOV']['forms'][0]['encodings'][0])
+    return x86[opcode]
 
-if __name__ == '__main__':
-    # x86 = load()
-    # find(0x8d)
+x86 = load_json('x86_64_fmt.json')
+serve_asm()
 
-    xform_json()
+
